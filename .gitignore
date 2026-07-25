@@ -4,4 +4,7 @@ __pycache__/
 .ipynb_checkpoints/
 models/*.h5
 models/*.pkl
+models/*.csv
+models/*.keras
 data/raw/*.csv
+data/processed/*.csv
