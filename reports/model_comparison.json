@@ -1,0 +1,26 @@
+{
+  "Linear Regression": {
+    "model": "Linear Regression",
+    "rmse": 17.3183,
+    "mae": 12.3858,
+    "mape_pct": 0.9609
+  },
+  "Gradient Boosting": {
+    "model": "Gradient Boosting",
+    "rmse": 153.7853,
+    "mae": 107.9786,
+    "mape_pct": 7.6124
+  },
+  "LSTM": {
+    "model": "LSTM",
+    "rmse": 120.8612,
+    "mae": 97.2701,
+    "mape_pct": 6.9653
+  },
+  "Naive Persistence": {
+    "model": "Naive Persistence",
+    "rmse": 16.8775,
+    "mae": 11.9413,
+    "mape_pct": 0.9254
+  }
+}
