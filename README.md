@@ -18,13 +18,17 @@ A comparative study of three forecasting approaches — **Linear Regression**, *
 
 ## Table of Contents
 - [Problem Statement](#problem-statement)
+- [Architecture](#architecture)
 - [Live Demo](#live-demo)
 - [Results](#results)
 - [Key Finding: Why the Naive Baseline Wins](#key-finding-why-the-naive-baseline-wins)
 - [Project Structure](#project-structure)
 - [Methodology](#methodology)
+- [Feature Engineering](#feature-engineering)
 - [Tech Stack](#tech-stack)
 - [How to Run](#how-to-run)
+- [Challenges Faced](#challenges-faced)
+- [Key Learnings](#key-learnings)
 - [Limitations](#limitations)
 - [Future Work](#future-work)
 
@@ -35,6 +39,30 @@ A comparative study of three forecasting approaches — **Linear Regression**, *
 Can technical indicators derived from historical OHLCV data meaningfully predict the next day's closing price of a stock? This project builds and fairly compares three modeling approaches against Reliance Industries (NSE: RELIANCE) daily price data, and — critically — benchmarks every result against the simplest possible forecast to determine whether any model adds real predictive value.
 
 Most stock prediction projects report an error metric (RMSE, MAPE) in isolation, which can look deceptively good without context. This project treats that as a starting point, not an endpoint, and asks: *compared to what?*
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Yahoo Finance API] -->|yfinance| B[Raw OHLCV Data]
+    U[User CSV Upload] --> B
+    B --> C[Data Validation & Caching]
+    C --> D[Feature Engineering<br/>41 features: MA, RSI, MACD,<br/>Bollinger Bands, Lags, Volume]
+    D --> E[Time-Aware Train/Test Split]
+    E --> F1[Linear Regression]
+    E --> F2[Gradient Boosting]
+    E --> F3[LSTM]
+    E --> F4[Naive Baseline]
+    F1 --> G[Shared Evaluation<br/>RMSE / MAE / MAPE]
+    F2 --> G
+    F3 --> G
+    F4 --> G
+    G --> H[Reports & Plots]
+    G --> I[Flask Dashboard<br/>Chart.js Visualizations]
+    H --> I
+```
 
 ---
 
@@ -136,6 +164,23 @@ stock-price-prediction/
 
 ---
 
+## Feature Engineering
+
+41 features were engineered from raw OHLCV data, grouped by category:
+
+| Category | Features | Purpose |
+|---|---|---|
+| **Trend** | SMA & EMA (5/10/20/50-day) | Capture short- and long-term price direction |
+| **Momentum** | RSI-14, MACD (line, signal, histogram) | Identify overbought/oversold conditions and momentum shifts |
+| **Volatility** | Bollinger Bands (upper/lower/middle/width) | Capture price dispersion and breakout potential |
+| **Historical Reference** | Lag features (1/2/3/5/10-day close) | Let tree-based models "see" recent history without native sequence support |
+| **Rolling Statistics** | Rolling std/max/min (5/10/20/50-day) | Capture local volatility and price range context |
+| **Volume** | % change, rolling average | Volume spikes often precede price moves |
+
+All features are computed with `pandas` rolling/EWM operations, with `inf` values (from edge cases like zero-loss RSI windows) explicitly cleaned before being dropped alongside the initial NaN rows created by rolling windows.
+
+---
+
 ## Tech Stack
 
 - **Data & Features:** `yfinance`, `pandas`, `numpy`
@@ -168,6 +213,22 @@ python -m src.generate_report
 python -m app.app
 # open http://127.0.0.1:8000
 ```
+
+---
+
+## Challenges Faced
+
+- **Extrapolation failure in tree-based and recurrent models** — Gradient Boosting and LSTM both underperformed a naive baseline on trending price data. Diagnosing this required understanding *why*, not just observing the metric: tree-based models are structurally bounded by training-set leaf values, and recurrent activations saturate outside the training range. This became the project's central finding rather than a bug to hide.
+- **Division-by-zero producing `inf` values** — RSI's `avg_gain / avg_loss` calculation and volume percentage change both produced `inf` on certain low-volatility windows for some companies (not RELIANCE, but others tested via the multi-company search feature), silently breaking `sklearn`'s input validation downstream. Fixed by explicitly replacing `inf`/`-inf` with `NaN` before the existing NaN-drop step, rather than patching each calculation individually.
+- **Keras 3 model serialization** — the legacy `.h5` save format failed to reload compiled metrics correctly under Keras 3 (`Could not deserialize 'keras.metrics.mse'`). Resolved by switching to the native `.keras` format across both training and inference code.
+- **Environment/platform issues** — XGBoost's compiled library failed to load on macOS due to a missing OpenMP runtime (`libomp.dylib`), requiring a Homebrew install. Chrome also silently blocks certain "unsafe" ports (5060, used initially, is reserved for SIP/VoIP) — surfaced as a confusing `ERR_UNSAFE_PORT` with no server-side error at all.
+
+## Key Learnings
+
+- **A model's error metric means nothing without a baseline.** A 0.96% MAPE looks impressive in isolation; benchmarked against a naive baseline that beats it, the same number tells a completely different story.
+- **Simpler models can have structural advantages on specific data shapes.** Linear Regression's ability to extrapolate linearly gave it a real (if modest) edge over more "sophisticated" models on trending series — model complexity and model suitability are not the same thing.
+- **Reproducibility requires explicit design choices**, not just working code: time-aware (non-shuffled) splits, scalers fit only on training data, and cached raw data all exist specifically to prevent subtle leakage or non-reproducible results.
+- **Generalizing a pipeline exposes edge cases a single-dataset pipeline never surfaces.** The `inf` value bug only appeared once the project was extended to arbitrary companies — a reminder that "works on my data" and "works in general" are different bars.
 
 ---
 
