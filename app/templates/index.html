@@ -1,89 +1,377 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Stock Price Prediction — {{ result.ticker }}</title>
-    <style>
-        body {
-            font-family: -apple-system, Helvetica, Arial, sans-serif;
-            max-width: 900px;
-            margin: 40px auto;
-            padding: 0 20px;
-            color: #1a1a1a;
-            background: #fafafa;
-        }
-        h1 { font-size: 1.6rem; margin-bottom: 4px; }
-        .subtitle { color: #666; margin-bottom: 30px; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 40px;
-        }
-        th, td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        th { background: #f0f0f0; font-weight: 600; }
-        .price { font-variant-numeric: tabular-nums; }
-        .naive-row { color: #999; }
-        .narrative {
-            background: #eef4ff;
-            border-left: 4px solid #4285f4;
-            padding: 14px 16px;
-            font-size: 0.92rem;
-            line-height: 1.5;
-            margin-bottom: 24px;
-        }
-        .note {
-            background: #fff8e1;
-            border-left: 4px solid #f4b400;
-            padding: 12px 16px;
-            font-size: 0.9rem;
-            margin-bottom: 30px;
-        }
-        img { max-width: 100%; margin-bottom: 20px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .section-title { margin-top: 40px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Price Prediction{% if result %} — {{ result.company_label }}{% endif %}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --bg: #0f1218;
+        --panel: #171b24;
+        --panel-2: #1d222c;
+        --border: #2a303c;
+        --text: #e8eaed;
+        --text-dim: #9aa1ac;
+        --accent: #5b8cff;
+        --accent-2: #7c5cff;
+        --good: #35c987;
+        --bad: #ff5c72;
+        --warn: #ffb648;
+        --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+        font-family: 'Inter', -apple-system, sans-serif;
+        background: radial-gradient(circle at 20% 0%, #1a1f2b 0%, var(--bg) 45%);
+        color: var(--text);
+        margin: 0;
+        padding: 0 0 60px;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    header {
+        padding: 40px 0 24px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 32px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .brand-dot {
+        width: 10px; height: 10px; border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        box-shadow: 0 0 12px var(--accent);
+    }
+    .brand-name { font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+    h1 { font-size: 1.9rem; margin: 0; font-weight: 800; letter-spacing: -0.02em; }
+    .tagline { color: var(--text-dim); font-size: 0.95rem; margin-top: 6px; }
+
+    .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+    .card-title {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+        font-weight: 700;
+        margin-bottom: 18px;
+    }
+
+    .search-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 700px) { .search-grid { grid-template-columns: 1fr; } }
+
+    label { display: block; font-size: 0.82rem; color: var(--text-dim); margin: 0 0 6px; font-weight: 500; }
+    select, input[type="text"], input[type="file"] {
+        width: 100%;
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 11px 14px;
+        border-radius: 9px;
+        font-size: 0.92rem;
+        font-family: inherit;
+        margin-bottom: 14px;
+    }
+    select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+    button {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: white;
+        border: none;
+        padding: 12px 22px;
+        border-radius: 9px;
+        font-size: 0.92rem;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+        transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.88; }
+    .hint { font-size: 0.78rem; color: var(--text-dim); margin-top: 10px; }
+
+    .error-box {
+        background: rgba(255, 92, 114, 0.1);
+        border: 1px solid rgba(255, 92, 114, 0.3);
+        color: #ff8a9a;
+        padding: 14px 18px;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        margin-bottom: 24px;
+    }
+
+    .stat-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 8px; }
+    .stat { flex: 1; min-width: 160px; }
+    .stat-label { font-size: 0.78rem; color: var(--text-dim); margin-bottom: 4px; }
+    .stat-value { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+
+    .note {
+        background: rgba(255, 182, 72, 0.08);
+        border: 1px solid rgba(255, 182, 72, 0.25);
+        border-left: 3px solid var(--warn);
+        padding: 14px 18px;
+        border-radius: 10px;
+        font-size: 0.88rem;
+        color: #e8d9b8;
+        margin-bottom: 24px;
+        line-height: 1.55;
+    }
+    .narrative {
+        background: rgba(91, 140, 255, 0.08);
+        border: 1px solid rgba(91, 140, 255, 0.25);
+        border-left: 3px solid var(--accent);
+        padding: 16px 18px;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: #cfd8f0;
+        margin-bottom: 24px;
+    }
+    .narrative strong { color: var(--text); }
+
+    .pred-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-bottom: 8px;
+    }
+    @media (max-width: 800px) { .pred-grid { grid-template-columns: repeat(2, 1fr); } }
+    .pred-card {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+    }
+    .pred-card.naive { opacity: 0.7; }
+    .pred-card .model-name { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pred-card .model-value { font-size: 1.35rem; font-weight: 800; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+    tr.naive-row { color: var(--text-dim); }
+    .badge-best { display: inline-block; background: rgba(53, 201, 135, 0.15); color: var(--good); font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-left: 8px; }
+
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 800px) { .charts-grid { grid-template-columns: 1fr; } }
+    .chart-box { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .chart-box h3 { font-size: 0.82rem; color: var(--text-dim); margin: 0 0 12px; font-weight: 600; }
+    canvas { max-width: 100%; }
+
+    .section-heading { font-size: 1.05rem; font-weight: 700; margin: 40px 0 16px; letter-spacing: -0.01em; }
+
+    footer { text-align: center; color: var(--text-dim); font-size: 0.8rem; margin-top: 40px; }
+</style>
 </head>
 <body>
-    <h1>{{ result.ticker }} — Next-Day Close Prediction</h1>
-    <div class="subtitle">
-        Latest available data: {{ result.latest_date }} — Close: ₹{{ result.latest_close }}
+<div class="container">
+
+    <header>
+        <div class="brand"><span class="brand-dot"></span><span class="brand-name">Prediction Engine</span></div>
+        <h1>Stock Price Prediction Dashboard</h1>
+        <div class="tagline">Compare Naive, Linear Regression, Gradient Boosting & LSTM forecasts — benchmarked honestly.</div>
+    </header>
+
+    <div class="card">
+        <div class="card-title">Search a Company</div>
+        <form method="POST" action="/search">
+            <div class="search-grid">
+                <div>
+                    <label>Choose from popular NSE companies</label>
+                    <select name="company_dropdown">
+                        <option>-- Select a company --</option>
+                        {% for name, ticker in companies %}
+                        <option value="{{ name }}">{{ name }} ({{ ticker }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label>Or type a ticker directly</label>
+                    <input type="text" name="manual_ticker" placeholder="e.g. TCS.NS">
+                </div>
+            </div>
+            <button type="submit">Predict Next-Day Close</button>
+            <div class="hint">Training all 3 models fresh takes ~60–90 seconds — please wait after clicking.</div>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Or Upload Your Own Data</div>
+        <form method="POST" action="/upload" enctype="multipart/form-data">
+            <label>CSV file (Date, Open, High, Low, Close, Volume)</label>
+            <input type="file" name="csv_file" accept=".csv">
+            <button type="submit">Predict From Upload</button>
+        </form>
+    </div>
+
+    {% if error %}
+    <div class="error-box">⚠ {{ error }}</div>
+    {% endif %}
+
+    {% if result %}
+
+    <div class="card">
+        <div class="card-title">{{ result.company_label }}</div>
+        <div class="stat-row">
+            <div class="stat">
+                <div class="stat-label">Latest Available Date</div>
+                <div class="stat-value" style="font-size:1.15rem;">{{ result.latest_date }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Latest Close</div>
+                <div class="stat-value">₹{{ result.latest_close }}</div>
+            </div>
+        </div>
     </div>
 
     <div class="note">
-        Predictions below are shown side by side across four approaches, including a naive
-        "tomorrow = today" baseline. This project's own evaluation found that none of the
-        trained models meaningfully beat this baseline on held-out test data — see the
-        limitations report and plots below for the full analysis.
+        Predictions are shown across four approaches, including a naive "tomorrow = today" baseline.
+        This project's evaluation found that trained models frequently fail to meaningfully beat this
+        baseline — read each result with that context.
     </div>
 
-    <div class="narrative">
-        <strong>Summary:</strong> {{ result.narrative }}
-    </div>
+    <div class="narrative"><strong>Summary —</strong> {{ result.narrative }}</div>
 
-    <table>
-        <thead>
-            <tr><th>Approach</th><th>Predicted Next-Day Close</th></tr>
-        </thead>
-        <tbody>
+    <div class="card">
+        <div class="card-title">Next-Day Predictions</div>
+        <div class="pred-grid">
             {% for model, value in result.predictions.items() %}
-            <tr class="{{ 'naive-row' if model == 'Naive Persistence' else '' }}">
-                <td>{{ model }}</td>
-                <td class="price">₹{{ value }}</td>
-            </tr>
+            <div class="pred-card {{ 'naive' if model == 'Naive Persistence' else '' }}">
+                <div class="model-name">{{ model }}</div>
+                <div class="model-value">₹{{ value }}</div>
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
+        </div>
+    </div>
 
-    <h2 class="section-title">Model Evaluation — Actual vs Predicted (Test Set)</h2>
-    <img src="/reports/predictions_comparison.png" alt="Predictions comparison across all models">
+    {% if result.metrics %}
+    <div class="card">
+        <div class="card-title">Model Evaluation — Held-Out Test Set</div>
+        <table>
+            <thead>
+                <tr><th>Approach</th><th>RMSE</th><th>MAE</th><th>MAPE %</th></tr>
+            </thead>
+            <tbody>
+                {% for m in result.metrics %}
+                <tr class="{{ 'naive-row' if m.model == 'Naive Persistence' else '' }}">
+                    <td>{{ m.model }}{% if loop.first %}<span class="badge-best">BEST</span>{% endif %}</td>
+                    <td>{{ m.rmse }}</td>
+                    <td>{{ m.mae }}</td>
+                    <td>{{ m.mape_pct }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 
-    <h2 class="section-title">RMSE / MAPE Comparison</h2>
-    <img src="/reports/metrics_comparison.png" alt="Metrics comparison bar charts">
+    {% if result.chart_data %}
+    <div class="section-heading">Actual vs Predicted — Test Set</div>
+    <div class="charts-grid">
+        {% for model_name in ['Naive Persistence', 'Linear Regression', 'Gradient Boosting', 'LSTM'] %}
+        {% if model_name in result.chart_data %}
+        <div class="chart-box">
+            <h3>{{ model_name }}</h3>
+            <canvas id="chart-{{ loop.index }}"></canvas>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
 
+    <div class="section-heading">RMSE / MAPE Comparison</div>
+    <div class="charts-grid">
+        <div class="chart-box"><h3>RMSE by Model</h3><canvas id="rmse-chart"></canvas></div>
+        <div class="chart-box"><h3>MAPE % by Model</h3><canvas id="mape-chart"></canvas></div>
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+    <footer>Stock Price Prediction Project — Linear Regression · Gradient Boosting · LSTM · Naive Baseline</footer>
+</div>
+
+{% if result and result.chart_data %}
+<script>
+    const chartData = {{ result.chart_data | tojson }};
+    const metricsData = {{ result.metrics | tojson }};
+    const modelOrder = ['Naive Persistence', 'Linear Regression', 'Gradient Boosting', 'LSTM'];
+
+    Chart.defaults.color = '#9aa1ac';
+    Chart.defaults.borderColor = '#2a303c';
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    modelOrder.forEach((name, i) => {
+        if (!chartData[name]) return;
+        const el = document.getElementById('chart-' + (i + 1));
+        if (!el) return;
+        new Chart(el, {
+            type: 'line',
+            data: {
+                labels: chartData[name].dates,
+                datasets: [
+                    {
+                        label: 'Actual',
+                        data: chartData[name].actual,
+                        borderColor: '#e8eaed',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                    },
+                    {
+                        label: 'Predicted',
+                        data: chartData[name].predicted,
+                        borderColor: '#5b8cff',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+                scales: {
+                    x: { ticks: { maxTicksLimit: 6, font: { size: 10 } }, grid: { display: false } },
+                    y: { ticks: { font: { size: 10 } }, grid: { color: '#20242e' } },
+                },
+            },
+        });
+    });
+
+    if (metricsData && metricsData.length) {
+        const labels = metricsData.map(m => m.model);
+        const rmse = metricsData.map(m => m.rmse);
+        const mape = metricsData.map(m => m.mape_pct);
+        const colors = ['#9aa1ac', '#5b8cff', '#7c5cff', '#ff5c72'];
+
+        new Chart(document.getElementById('rmse-chart'), {
+            type: 'bar',
+            data: { labels, datasets: [{ data: rmse, backgroundColor: colors, borderRadius: 6 }] },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } }, y: { grid: { color: '#20242e' } } },
+            },
+        });
+
+        new Chart(document.getElementById('mape-chart'), {
+            type: 'bar',
+            data: { labels, datasets: [{ data: mape, backgroundColor: colors, borderRadius: 6 }] },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { x: { grid: { display: false }, ticks: { font: { size: 10 } } }, y: { grid: { color: '#20242e' } } },
+            },
+        });
+    }
+</script>
+{% endif %}
 </body>
 </html>

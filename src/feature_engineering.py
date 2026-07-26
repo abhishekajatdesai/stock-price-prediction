@@ -126,6 +126,13 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df = add_target_variable(df)
 
     before = len(df)
+
+    # RSI (avg_gain/avg_loss) and volume % change can produce +/-inf when a
+    # rolling window has zero loss or zero prior volume — replace with NaN so
+    # the existing dropna() below removes those rows cleanly, instead of
+    # silently feeding inf into downstream models (which breaks sklearn/XGBoost).
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+
     df.dropna(inplace=True)   # rolling windows/lags create NaNs at the start of the series
     after = len(df)
     logger.info(f"Dropped {before - after} rows with NaNs from rolling/lag windows. {after} rows remain.")

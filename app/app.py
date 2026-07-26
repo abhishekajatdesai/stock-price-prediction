@@ -13,18 +13,24 @@ import logging
 import sys
 from pathlib import Path
 
+import json
+
 import joblib
 import numpy as np
 import pandas as pd
-from flask import Flask, render_template, send_from_directory
+from flask import Flask, render_template, send_from_directory, request
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config import PROCESSED_DATA_DIR, MODELS_DIR, REPORTS_DIR, LSTM_LOOKBACK, TICKER, LOG_LEVEL
+from src.company_lookup import get_company_list, get_ticker
+from src.on_demand_predictor import run_on_demand_prediction, OnDemandError
 
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config["UPLOAD_FOLDER"] = Path(__file__).resolve().parent / "uploads"
+app.config["UPLOAD_FOLDER"].mkdir(exist_ok=True)
 
 # ---------- Load everything once at startup, not per-request ----------
 _featured_df = None
@@ -182,11 +188,113 @@ def generate_narrative_summary(result: dict) -> str:
     return " ".join(lines)
 
 
+def load_default_chart_data() -> dict:
+    """Load the saved prediction CSVs for the main RELIANCE.NS view into chart-ready JSON."""
+    files = {
+        "Naive Persistence": MODELS_DIR / "naive_predictions.csv",
+        "Linear Regression": MODELS_DIR / "lr_predictions.csv",
+        "Gradient Boosting": MODELS_DIR / "gb_predictions.csv",
+        "LSTM": MODELS_DIR / "lstm_predictions.csv",
+    }
+    chart_data = {}
+    for name, path in files.items():
+        if path.exists():
+            df = pd.read_csv(path, parse_dates=["date"])
+            chart_data[name] = {
+                "dates": df["date"].dt.strftime("%Y-%m-%d").tolist(),
+                "actual": [round(float(v), 2) for v in df["actual"]],
+                "predicted": [round(float(v), 2) for v in df["predicted"]],
+            }
+    return chart_data
+
+
+def load_default_metrics() -> list:
+    """Load saved metrics from reports/model_comparison.json for the metrics bar chart."""
+    path = REPORTS_DIR / "model_comparison.json"
+    if not path.exists():
+        return []
+    with open(path) as f:
+        results = json.load(f)
+    order = ["Naive Persistence", "Linear Regression", "Gradient Boosting", "LSTM"]
+    return [results[m] for m in order if m in results]
+
+
 @app.route("/")
 def index():
     result = predict_next_day()
     result["narrative"] = generate_narrative_summary(result)
-    return render_template("index.html", result=result)
+    result["company_label"] = TICKER
+    result["metrics"] = load_default_metrics()
+    result["chart_data"] = load_default_chart_data()
+    return render_template("index.html", result=result, companies=get_company_list())
+
+
+@app.route("/search", methods=["POST"])
+def search():
+    """Handle company search from the dropdown or free-text ticker field."""
+    company_choice = request.form.get("company_dropdown", "").strip()
+    manual_ticker = request.form.get("manual_ticker", "").strip()
+
+    ticker = None
+    company_label = None
+
+    if manual_ticker:
+        ticker = manual_ticker.upper()
+        company_label = ticker
+    elif company_choice and company_choice != "-- Select a company --":
+        ticker = get_ticker(company_choice)
+        company_label = company_choice
+
+    if not ticker:
+        return render_template(
+            "index.html",
+            error="Please select a company or enter a ticker symbol.",
+            companies=get_company_list(),
+        )
+
+    try:
+        result = run_on_demand_prediction(ticker=ticker, company_label=company_label)
+        result["narrative"] = generate_narrative_summary(result)
+        return render_template("index.html", result=result, companies=get_company_list())
+    except OnDemandError as e:
+        logger.warning(f"On-demand prediction failed for {ticker}: {e}")
+        return render_template("index.html", error=str(e), companies=get_company_list())
+
+
+@app.route("/upload", methods=["POST"])
+def upload():
+    """Handle manual CSV upload as an alternative to fetching from Yahoo Finance."""
+    file = request.files.get("csv_file")
+
+    if not file or file.filename == "":
+        return render_template(
+            "index.html",
+            error="Please choose a CSV file to upload.",
+            companies=get_company_list(),
+        )
+
+    if not file.filename.lower().endswith(".csv"):
+        return render_template(
+            "index.html",
+            error="Only .csv files are supported.",
+            companies=get_company_list(),
+        )
+
+    save_path = app.config["UPLOAD_FOLDER"] / file.filename
+    file.save(save_path)
+
+    try:
+        result = run_on_demand_prediction(
+            uploaded_csv_path=save_path,
+            company_label=f"Uploaded: {file.filename}",
+        )
+        result["narrative"] = generate_narrative_summary(result)
+        return render_template("index.html", result=result, companies=get_company_list())
+    except OnDemandError as e:
+        logger.warning(f"On-demand prediction failed for uploaded file: {e}")
+        return render_template("index.html", error=str(e), companies=get_company_list())
+    finally:
+        save_path.unlink(missing_ok=True)  # don't retain uploaded files after processing
 
 
 @app.route("/reports/<path:filename>")
@@ -197,4 +305,4 @@ def serve_report(filename):
 
 if __name__ == "__main__":
     load_all_models()
-    app.run(debug=True, port=5050)
+    app.run(debug=True, port=8000, threaded=True)

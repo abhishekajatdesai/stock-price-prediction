@@ -6,6 +6,16 @@ A comparative study of three forecasting approaches — **Linear Regression**, *
 
 ---
 
+## Features
+
+- **Interactive dashboard** — dark-themed, card-based UI with live Chart.js charts (not static images) for actual-vs-predicted comparison and RMSE/MAPE bars
+- **Multi-company search** — predict next-day close for any of ~30 popular NSE companies via dropdown, or any ticker typed directly (e.g. `TCS.NS`)
+- **Manual CSV upload** — bring your own historical OHLCV data (standard Yahoo Finance export format) and get predictions without needing a ticker symbol at all
+- **On-demand full retraining** — searching a new company trains fresh Naive, Linear Regression, Gradient Boosting, and LSTM models live, evaluated on that company's own held-out test data — not just a lookup against pre-computed results
+- **Rule-based narrative summary** — plain-English commentary on each prediction set, generated with zero external API cost, structured so it can be swapped for a real LLM call later with no other code changes
+
+---
+
 ## Table of Contents
 - [Problem Statement](#problem-statement)
 - [Live Demo](#live-demo)
@@ -30,14 +40,23 @@ Most stock prediction projects report an error metric (RMSE, MAPE) in isolation,
 
 ## Live Demo
 
-The Flask app serves next-day predictions from all four approaches side by side, with an auto-generated narrative summary and the full evaluation report.
+The dashboard lets you search any NSE-listed company (or type a ticker directly), or upload your own CSV — predictions and evaluation charts are generated live for whatever you choose.
 
-*(Add a screenshot or GIF of the running app here)*
+**Search & upload:**
+![Dashboard — Search and Upload](reports/app_screenshot_1_search.png)
+
+**Predictions & narrative summary:**
+![Dashboard — Predictions Summary](reports/app_screenshot_2_predictions.png)
+
+**Model evaluation — actual vs predicted, RMSE/MAPE comparison:**
+![Dashboard — Charts](reports/app_screenshot_3_charts.png)
 
 ```
 python -m app.app
-# open http://127.0.0.1:5050
+# open http://127.0.0.1:8000
 ```
+
+**Note:** searching a new company trains all 3 models fresh (~60-90 seconds) — this is intentional, not a bug, since it keeps results genuinely specific to that company's own data rather than reusing RELIANCE-trained models.
 
 ---
 
@@ -90,11 +109,14 @@ stock-price-prediction/
 │   ├── train_lstm.py           # LSTM (sequence-based)
 │   ├── naive_baseline.py       # naive persistence benchmark
 │   ├── evaluate.py             # shared RMSE/MAE/MAPE logic
-│   └── generate_report.py      # plots + auto-written limitations report
+│   ├── generate_report.py      # plots + auto-written limitations report
+│   ├── company_lookup.py       # company name -> ticker mapping for search
+│   └── on_demand_predictor.py  # live full-retrain pipeline for any ticker/CSV
 ├── models/                     # saved model weights & scalers
 ├── app/
-│   ├── app.py                  # Flask app
-│   └── templates/index.html
+│   ├── app.py                  # Flask app (default view + search + upload)
+│   ├── templates/index.html    # dashboard UI with Chart.js
+│   └── uploads/                # temp storage for uploaded CSVs (cleared after use)
 ├── reports/                    # generated plots + limitations report
 ├── config.py                   # all tunable parameters, single source of truth
 └── requirements.txt
@@ -118,7 +140,7 @@ stock-price-prediction/
 
 - **Data & Features:** `yfinance`, `pandas`, `numpy`
 - **Modeling:** `scikit-learn` (Linear Regression), `xgboost` (Gradient Boosting), `tensorflow`/`keras` (LSTM)
-- **Evaluation & Reporting:** `matplotlib`, custom evaluation module
+- **Evaluation & Reporting:** `matplotlib` (main analysis), `Chart.js` (live dashboard)
 - **Deployment:** `Flask`
 
 ---
@@ -144,7 +166,7 @@ python -m src.generate_report
 
 # 3. Launch the app
 python -m app.app
-# open http://127.0.0.1:5050
+# open http://127.0.0.1:8000
 ```
 
 ---
